@@ -7,10 +7,19 @@ app = Flask(__name__)
 
 conn = httplib.HTTPConnection("127.0.0.1:5000")	
 headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
+node_id = 0;
 
-def client_task(node_id):
-	print ('client_task')
+#processes data coming in
+@app.route('/', methods = ['PUT', 'POST'])
+def client_server():
+	error = None
+	return_message = ''
+	cmd = int(request.form['@cmd'])
+	return return_message
 
+def client_task():
+	#sets up transmisison variables
+	global node_id
 	connections = []
 	num_connections = 0
 	node_connections = []
@@ -75,23 +84,18 @@ def client_task(node_id):
 		r1 = conn.getresponse()
 		energy_received = float(r1.read())	
 
-#get node index
-params = urllib.urlencode({'@cmd': 0})
-conn.request("PUT", "", params, headers)
-r1 = conn.getresponse()
-node_id = int(r1.read())
-	
-client_task_thread = Thread(target=client_task, args=(node_id))
-client_task_thread.start()
+if __name__ == '__main__':
+	#get node index
+	params = urllib.urlencode({'@cmd': 0})
+	conn.request("PUT", "", params, headers)
+	r1 = conn.getresponse()
+	node_id = int(r1.read())
 
-@app.route('/', methods = ['PUT', 'POST'])
-def client_server():
-	error = None
-	return_message = ''
-	cmd = int(request.form['@cmd'])
-	return return_message
+	client_task_thread = Thread(target=client_task, args=())
+	client_task_thread.start()
 
-# create a client server
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
-app.run(debug=True, host='127.0.0.1', port = 6000)
+	# create a client server
+	log = logging.getLogger('werkzeug')
+	log.setLevel(logging.ERROR)
+	port_num = 6000 + node_id
+	app.run(host='127.0.0.1', port = port_num)

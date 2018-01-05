@@ -127,10 +127,6 @@ def set_info():
 		return_message = check_energy_share(request)
 	return return_message
 
-@app.route('/', methods=['GET'])
-def get_info():
-	return 'sent'
-
 def server_monitor():
 	for x in range(0,10):
 		time.sleep(1)
@@ -143,4 +139,4 @@ if __name__ == '__main__':
 	
 	log = logging.getLogger('werkzeug')
 	log.setLevel(logging.ERROR)
-	app.run(debug=True, host='127.0.0.1', port = 5000)
+	app.run(host='127.0.0.1', port = 5000)
