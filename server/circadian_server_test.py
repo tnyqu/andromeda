@@ -1,10 +1,12 @@
-import logging, time, numpy as np
+import logging, httplib, urllib, time, numpy as np
 from flask import Flask, request, render_template
 from threading import Thread
 
 app = Flask(__name__)
 
-num_nodes = 0;
+headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
+
+num_nodes = 0
 connections = np.zeros((1,1))
 total_energy_out = np.zeros((1,1))
 total_energy_transfer = np.zeros((1,1))
@@ -14,8 +16,12 @@ total_node_max_capacity = np.zeros((1,1))
 total_node_energy_transfer = np.zeros((1,1))
 total_energy_stored = np.zeros((1,1))
 
-def node_set(request):
-	global num_nodes, connections, total_energy_out, total_energy_transfer, total_energy_stored, total_node_energy_transfer, total_node_max_capacity, total_node_max_usage, total_energy_stored, total_energy_transfer
+node_server_connections = []
+
+
+def node_init(request):
+	global num_nodes, connections, total_energy_out, total_energy_transfer, total_energy_stored, total_node_energy_transfer, total_node_max_capacity, total_node_max_usage, total_energy_stored, total_energy_transfer, node_server_connections
+
 	num_nodes = num_nodes + 1
 	#expand the array
 	if (num_nodes > 1):
@@ -27,9 +33,14 @@ def node_set(request):
 		total_node_max_usage = np.zeros(num_nodes)
 		total_node_max_capacity = np.zeros(num_nodes)
 		total_node_energy_transfer = np.zeros(num_nodes)
+	
+	#add new connection
+	node_connection_addr = "127.0.0.1:" + str(6000 + num_nodes - 1)
+	node_connection = httplib.HTTPConnection(node_connection_addr)
+	node_server_connections.append( node_connection)
 	return str(num_nodes - 1)
 
-def node_param(request):
+def node_set_param(request):
 	global total_node_max_usage, total_node_max_capacity	
 	node_id = int(request.form['@node_id'])	
 	e_use_max = int(request.form['@e_use_max'])	
@@ -38,12 +49,18 @@ def node_param(request):
 	total_node_max_capacity[node_id] = e_capacity	
 	return str(1)
 
-def node_connect(request):
+def node_add_connection(request):
 	global connections
 	node_id = int(request.form['@node_id'])	
 	connect = int(request.form['@connect'])	
-	connections[node_id][connect] = 1;
-	connections[connect][node_id] = 1;
+	connections[node_id][connect] = 1
+	connections[connect][node_id] = 1
+	
+	#tell node at connection that we have a new connection for them
+	params = urllib.urlencode({'@cmd': 40, '@connect': node_id, '@num_nodes': num_nodes})
+	current_connection = node_server_connections[connect]
+	current_connection.request("PUT", "", params, headers)
+	r = current_connection.getresponse()
 	return str(1)
 
 def node_info(request):
@@ -52,7 +69,7 @@ def node_info(request):
 	energy_out = float(request.form['@energy_out'])	
 	
 	global total_energy_out, total_energy_transfer 
-	total_energy_out[node_id][connect] = energy_out;
+	total_energy_out[node_id][connect] = energy_out
 
 	#energy out for the node (total)
 	total_energy_transfer[node_id][connect] =  total_energy_out[node_id][connect] - total_energy_out[connect][node_id]
@@ -68,7 +85,7 @@ def node_status(request):
 	e_need = float(request.form['@e_need'])
 	e_use = float(request.form['@e_use'])
 	
-	total_energy_stored[node_id] = e_store;
+	total_energy_stored[node_id] = e_store
 	#check each and every node that it is connected to for e_need capabilities
 	e_available = 0
 	for n in range (num_nodes - 1):
@@ -87,16 +104,6 @@ def node_status(request):
 				total_energy_stored[n] = total_node_max_usage[n]
 	# we need to track and communicate who sent energy
 	return str(min(e_available, e_need)) #returns the given energy
-	
-def check_num_connect(request):
-	node_id = float(request.form['@node_id'])	
-	num_connections = 0;
-	node_connections = ''
-	for n in range (num_nodes - 1):
-		if connections[node_id][n] != 0:
-			num_connections = num_connections + 1
-			node_connections = node_connections + '/' + str(n)
-	return str(num_nodes) + '/' + str(num_connections) + str(node_connections)
 
 def check_energy_share(request):
 	node_id = int(request.form['@node_id'])	
@@ -112,17 +119,17 @@ def set_info():
 	return_message = ''	
 	cmd = int(request.form['@cmd'])
 	if (cmd == 0):
-		return_message = node_set(request)
+		return_message = node_init(request)
 	if (cmd == 1):
-		return_message = node_connect(request)
+		return_message = node_add_connection(request)
 	if (cmd == 2):
-		return_message = node_param(request)
+		return_message = node_set_param(request)
 	if (cmd == 10):
 		return_message = node_info(request)
 	if (cmd == 11):
 		return_message = node_status(request)
-	if (cmd == 20):
-		return_message = check_num_connect(request)
+	#if (cmd == 20):
+	#	return_message = check_num_connect(request)
 	if (cmd == 21):
 		return_message = check_energy_share(request)
 	return return_message
