@@ -1,4 +1,4 @@
-import logging, httplib, urllib, time, numpy as np
+import logging, httplib, urllib, time, numpy as np, math
 from flask import Flask, request, render_template
 from threading import Thread
 
@@ -7,112 +7,67 @@ app = Flask(__name__)
 headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
 
 num_nodes = 0
-connections = np.zeros((1,1))
-total_energy_out = np.zeros((1,1))
-total_energy_transfer = np.zeros((1,1))
-total_energy_stored = np.zeros((1,1))
-total_node_max_usage = np.zeros((1,1))
-total_node_max_capacity = np.zeros((1,1))
-total_node_energy_transfer = np.zeros((1,1))
-total_energy_stored = np.zeros((1,1))
+total_energy_stored = np.zeros((1,3))
 
 node_server_connections = []
-
+node_locations = []
 
 def node_init(request):
-	global num_nodes, connections, total_energy_out, total_energy_transfer, total_energy_stored, total_node_energy_transfer, total_node_max_capacity, total_node_max_usage, total_energy_stored, total_energy_transfer, node_server_connections
+	global num_nodes, connections, total_energy_stored, node_server_connections, node_locations
 
 	num_nodes = num_nodes + 1
 	#expand the array
 	if (num_nodes > 1):
-		connections = np.hstack((connections, np.zeros((num_nodes-1,1))))
-		connections = np.vstack((connections, np.zeros((1,num_nodes))))	
-		total_energy_out = np.zeros((num_nodes, num_nodes))
-		total_energy_transfer = np.zeros((num_nodes, num_nodes))
-		total_energy_stored = np.zeros(num_nodes)
-		total_node_max_usage = np.zeros(num_nodes)
-		total_node_max_capacity = np.zeros(num_nodes)
-		total_node_energy_transfer = np.zeros(num_nodes)
-	
+		total_energy_stored = np.zeros((num_nodes,3))
+		node_locations = np.vstack((node_locations,np.zeros((1,2))))
+	else:
+		node_locations = np.zeros((1,2))
 	#add new connection
 	node_connection_addr = "127.0.0.1:" + str(6000 + num_nodes - 1)
 	node_connection = httplib.HTTPConnection(node_connection_addr)
 	node_server_connections.append( node_connection)
+	
 	return str(num_nodes - 1)
 
 def node_set_param(request):
-	global total_node_max_usage, total_node_max_capacity	
+	global node_locations
+
 	node_id = int(request.form['@node_id'])	
-	e_use_max = int(request.form['@e_use_max'])	
-	e_capacity = int(request.form['@e_capacity'])
-	total_node_max_usage[node_id] = e_use_max
-	total_node_max_capacity[node_id] = e_capacity	
+	x_loc = float(request.form['@x_loc'])	
+	y_loc = float(request.form['@y_loc'])
+	node_locations[node_id][0] = x_loc
+	node_locations[node_id][1] = y_loc
 	return str(1)
 
 def node_add_connection(request):
-	global connections
 	node_id = int(request.form['@node_id'])	
 	connect = int(request.form['@connect'])	
-	connections[node_id][connect] = 1
-	connections[connect][node_id] = 1
 	
 	#tell node at connection that we have a new connection for them
-	params = urllib.urlencode({'@cmd': 40, '@connect': node_id, '@num_nodes': num_nodes})
+	node_distance = math.sqrt(math.pow(node_locations[connect][0] - node_locations[node_id][0], 2) + math.pow(node_locations[connect][1] - node_locations[node_id][1], 2))	
+	
+	params = urllib.urlencode({'@cmd': 40, '@connect': node_id, '@num_nodes': num_nodes, '@distance': node_distance})
 	current_connection = node_server_connections[connect]
+	current_connection.request("PUT", "", params, headers)
+	r = current_connection.getresponse()
+	
+	params = urllib.urlencode({'@cmd': 40, '@connect': connect, '@num_nodes': num_nodes, '@distance': node_distance})
+	current_connection = node_server_connections[node_id]
 	current_connection.request("PUT", "", params, headers)
 	r = current_connection.getresponse()
 	return str(1)
 
-def node_info(request):
-	node_id = float(request.form['@node_id'])	
-	connect = float(request.form['@connect'])	
-	energy_out = float(request.form['@energy_out'])	
-	
-	global total_energy_out, total_energy_transfer 
-	total_energy_out[node_id][connect] = energy_out
-
-	#energy out for the node (total)
-	total_energy_transfer[node_id][connect] =  total_energy_out[node_id][connect] - total_energy_out[connect][node_id]
-	total_energy_transfer[connect][node_id] = -total_energy_out[node_id][connect] + total_energy_out[connect][node_id]
+def node_update(request):
+	global total_energy_stored
+	node_id = int(request.form['@node_id'])	
+	storage = float(request.form['@storage'])	
+	waste = float(request.form['@waste'])	
+	deficit = float(request.form['@deficit'])	
+	total_energy_stored[node_id][0] = storage
+	total_energy_stored[node_id][1] = deficit
+	total_energy_stored[node_id][2] = waste
 	return str(1)
 
-def node_status(request):
-	global total_energy_stored
-		
-	node_id = float(request.form['@node_id'])	
-	e_store = float(request.form['@e_store']) 
-	e_gen = float(request.form['@e_gen'])
-	e_need = float(request.form['@e_need'])
-	e_use = float(request.form['@e_use'])
-	
-	total_energy_stored[node_id] = e_store
-	#check each and every node that it is connected to for e_need capabilities
-	e_available = 0
-	for n in range (num_nodes - 1):
-		if connections[node_id][n] != 0:
-			e_available = e_available + max(0, total_energy_stored[n] - total_node_max_usage[n])
-	if (e_available > e_need):
-		for n in range (1,num_nodes - 1):
-			if connections[node_id][n] != 0:
-				e_need / e_available * (total_energy_stored[n] - total_node_max_usage[n])
-				total_node_energy_transfer[n] = total_node_energy_transfer[n] + e_need / e_available * (total_energy_stored[n] - total_node_max_usage[n])
-				total_energy_stored[n] = total_energy_stored[n] - e_need / e_available * (total_energy_stored[n] - total_node_max_usage[n]) 
-	else:
-		for n in range (1,num_nodes - 1):
-			if connections[node_id][n] != 0:
-				total_node_energy_transfer[n] = total_node_energy_transfer[n] - total_energy_stored[n] - total_node_max_usage[n]
-				total_energy_stored[n] = total_node_max_usage[n]
-	# we need to track and communicate who sent energy
-	return str(min(e_available, e_need)) #returns the given energy
-
-def check_energy_share(request):
-	node_id = int(request.form['@node_id'])	
-	global total_node_energy_transfer
-	energy_transfer_out = total_node_energy_transfer[node_id]
-	total_node_energy_transfer[node_id] = 0
-	# we need to communicate who we need to send energy to and how much
-	return str(energy_transfer_out)
-	
 @app.route('/', methods=['PUT', 'POST'])
 def set_info():
 	error = None
@@ -125,19 +80,15 @@ def set_info():
 	if (cmd == 2):
 		return_message = node_set_param(request)
 	if (cmd == 10):
-		return_message = node_info(request)
-	if (cmd == 11):
-		return_message = node_status(request)
-	#if (cmd == 20):
-	#	return_message = check_num_connect(request)
-	if (cmd == 21):
-		return_message = check_energy_share(request)
+
+		return_message = node_update(request)
 	return return_message
 
 def server_monitor():
 	for x in range(0,10):
 		time.sleep(1)
 		global total_energy_stored
+		print ['stored', 'deficit', 'waste']
 		print total_energy_stored
 
 if __name__ == '__main__':
