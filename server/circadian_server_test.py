@@ -7,7 +7,8 @@ app = Flask(__name__)
 headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
 
 num_nodes = 0
-total_energy_stored = np.zeros((1,3))
+total_energy_stored = []
+#np.zeros((1,3))
 
 node_server_connections = []
 node_locations = []
@@ -17,8 +18,8 @@ def node_init(request):
 
 	num_nodes = num_nodes + 1
 	#expand the array
+	total_energy_stored = np.zeros((num_nodes,5))
 	if (num_nodes > 1):
-		total_energy_stored = np.zeros((num_nodes,3))
 		node_locations = np.vstack((node_locations,np.zeros((1,2))))
 	else:
 		node_locations = np.zeros((1,2))
@@ -63,9 +64,13 @@ def node_update(request):
 	storage = float(request.form['@storage'])	
 	waste = float(request.form['@waste'])	
 	deficit = float(request.form['@deficit'])	
-	total_energy_stored[node_id][0] = storage
-	total_energy_stored[node_id][1] = deficit
-	total_energy_stored[node_id][2] = waste
+	generation = float(request.form['@generation'])	
+	usage = float(request.form['@usage'])	
+	total_energy_stored[node_id][0] = int(storage)
+	total_energy_stored[node_id][1] = int(generation)
+	total_energy_stored[node_id][2] = int(usage)
+	total_energy_stored[node_id][3] = int(waste)
+	total_energy_stored[node_id][4] = int(deficit)
 	return str(1)
 
 @app.route('/', methods=['PUT', 'POST'])
@@ -85,11 +90,14 @@ def set_info():
 	return return_message
 
 def server_monitor():
-	for x in range(0,10):
+	loop = 0
+	while (loop < 48):
 		time.sleep(1)
 		global total_energy_stored
-		print ['stored', 'deficit', 'waste']
-		print total_energy_stored
+		if (len(total_energy_stored) != 0):
+			print loop, ['stored', 'generation','usage','waste', 'deficit']
+			print total_energy_stored
+			loop = loop + 1
 
 if __name__ == '__main__':
 	t = Thread(target=server_monitor, args=())
