@@ -72,7 +72,7 @@ def get_apparent_energy(request):
 def get_energy(request):
 	global min_energy, energy_out, energy_storage, node_reference
 	connected_node_id = int(request.form['@node_id'])
-	energy_request = float(request.form['@energy_request'])
+	energy_request = float(request.form['@energy_request']) / ( (100 - node_distances[node_reference[connected_node_id]]/500) / 100)
 	elapsed_time = float(request.form['@time'])
 	energy_transfer = 0
 		
@@ -171,7 +171,7 @@ def client_task():
 	prev_time = time.time()
 	#main loop
 	while (1):
-		time.sleep(0.001)
+		time.sleep(0.1)
 		sleep_time = time.time() - prev_time
 		total_time = total_time + sleep_time
 		prev_time = time.time()
@@ -232,18 +232,17 @@ def client_task():
 			network_apparent_energy[n] = network_apparent_energy[n] * (100 - node_distances[n]/500) / 100.0
 			if (network_apparent_energy[n] > 0):
 				total_available_apparent_energy = total_available_apparent_energy + network_apparent_energy[n]
-		
-		
+				
 		if (energy_storage < min_energy):
 			for n in range(len(node_connections)):
 				if (network_apparent_energy[n] > 0):
-					energy_request = 2 * network_apparent_energy[n] / total_available_apparent_energy * current_deficit
+					energy_request = network_apparent_energy[n] / total_available_apparent_energy * current_deficit
 					current_connection = node_server_connections[n]
 					params = urllib.urlencode({'@cmd':60, '@node_id':node_id, '@energy_request':energy_request, '@time': sleep_time})
 					current_connection.request("PUT", "", params, headers)
 					r = current_connection.getresponse()
 					energy_received += float(r.read()) * (100 - node_distances[n]/500) / 100.0
-		
+			
 		elif (energy_storage < storage_capacity): 
 			for n in range(len(node_connections)):						
 				apparent_energy = 0
@@ -257,9 +256,10 @@ def client_task():
 					current_connection.request("PUT", "", params, headers)
 					r = current_connection.getresponse()
 					energy_received += float(r.read()) * (100 - node_distances[n]/500) / 100.0
+		
 		if (energy_received > 0):
-			print node_id, energy_received		
-
+			print node_id, energy_diff, energy_received		
+		
 if __name__ == '__main__':
 	#get node index
 	params = urllib.urlencode({'@cmd': 0})
