@@ -28,7 +28,13 @@ network_apparent_energy = []
 daily_generation_profile = [0,0,0,0,0,1,7,18,38,59,57,87,92,95,92,87,72,56,38,19,7,1,0,0]
 daily_home_usage_profile = [20,10,5,5,5,5,10,20,50,30,5,5,5,5,5,5,5,40,70,80,80,90,70,50]
 daily_business_usage_profile = [10,10,10,10,10,10,30,70,80,80,80,80,80,80,80,80,80,80,50,30,10,10,10,10]
- 
+
+total_locations = [[100,0],[0,100],[100,100],[200,100],[0,200],[100,200],[200,200],[0,300],[100,300],[200,300]]
+total_connections = [[],[0],[1,0],[2,0],[1,2],[1,2,3,4],[2,3,5],[4,5],[4,5,6,7],[5,6,8]]
+total_energy_generation = [0,0,40,0,40,400,100,40,0,0]
+total_energy_storage 	= [100,100,100,100,100,400,100,100,100,100]
+total_energy_usage 	= [40,40,40,40,40,200,40,40,40,40]
+
 def new_node_connection(request):
 	new_connection = int(request.form['@connect'])
 	node_distance = float(request.form['@distance'])
@@ -134,19 +140,41 @@ def client_task():
 	
 	global daily_generation_profile, min_energy
 	max_usage = 100
-	
+	'''
 	if (node_id == 0):
 		solar_panel_capacity = randint(5,20) * 10 
 		energy_usage_capacity =  randint(5,10) * 10
 		storage_capacity = randint(5,20) * 10
+		daily_usage_profile = daily_business_usage_profile
+	elif (node_id == 1):
+		solar_panel_capacity = 500
+		energy_usage_capacity = 0
+		storage_capacity = 1000
 		daily_usage_profile = daily_business_usage_profile
 	else:
 		solar_panel_capacity = randint(0,5) * 10
 		energy_usage_capacity = randint(5,20)
 		storage_capacity = randint(3,10) * 10
 		daily_usage_profile = daily_home_usage_profile
-	min_energy = energy_usage_capacity
 	location = [randint(0,500), randint(0,500)]
+	'''
+
+
+	total_locations = [[100,0],[0,100],[100,100],[200,100],[0,200],[100,200],[200,200],[0,300],[100,300],[200,300]]
+	total_connections = [[],[0],[1,0],[2,0],[1,2],[1,2,3,4],[2,3,5],[4,5],[4,5,6,7],[5,6,8]]
+	total_energy_generation = [0,0,40,0,40,400,100,40,0,0]
+	total_energy_storage 	= [100,100,100,100,100,400,100,100,100,100]
+	total_energy_usage 	= [40,40,40,40,40,200,40,40,40,40]
+	
+	location = total_locations[node_id]
+	solar_panel_capacity = total_energy_generation[node_id]
+	energy_usage_capacity = total_energy_usage[node_id]
+	storage_capacity = total_energy_storage[node_id]
+	daily_usage_profile = daily_home_usage_profile
+	if (node_id == 5):	
+		daily_usage_profile = daily_business_usage_profile
+
+	min_energy = energy_usage_capacity
 	
 	energy_generation = 0
 	energy_distribution = 0
@@ -162,21 +190,29 @@ def client_task():
 	conn.request("PUT", "", params, headers)
 	r1 = conn.getresponse()	
 	
+	for n in range (0, len(total_connections[node_id])):
+		params = urllib.urlencode({'@cmd': 1,'@node_id': node_id, '@connect': total_connections[node_id][n]})
+		conn.request("PUT", "", params, headers)
+		r1 = conn.getresponse()
+	'''	
 	if (node_id > 0):
 		for n in range (0, randint(0,node_id-1)):
 			params = urllib.urlencode({'@cmd': 1,'@node_id': node_id, '@connect': randint(0,node_id - 1) })
 			conn.request("PUT", "", params, headers)
 			r1 = conn.getresponse()
+	'''
 	total_time = 0
 	prev_time = time.time()
 	#main loop
 	while (1):
-		time.sleep(0.1)
+		time.sleep(uniform(0.1,0.5))
 		sleep_time = time.time() - prev_time
 		total_time = total_time + sleep_time
 		prev_time = time.time()
 			
+		#energy_generation = sleep_time * solar_panel_capacity * daily_generation_profile[int(total_time) % 24] / 100.0
 		energy_generation = sleep_time * solar_panel_capacity * daily_generation_profile[int(total_time) % 24] / 100.0 * uniform(0.5,1.0)
+		#energy_usage_desired = sleep_time * energy_usage_capacity * daily_usage_profile[int(total_time) % 24] / 100.0
 		energy_usage_desired = sleep_time * energy_usage_capacity * daily_usage_profile[int(total_time) % 24] / 100.0 * uniform(0.0,3.0)
 		#energy_usage_desired = uniform(50,150) * sleep_time
 		energy_diff = energy_generation - energy_usage_desired + energy_received
@@ -207,12 +243,7 @@ def client_task():
 		conn.request("PUT", "", params, headers)
 		r1 = conn.getresponse()
 		
-		'''	
-		#here is how it is done!!!!
-		1. check if itself has a deficit, if so, ask all for their energy and divide need amonst group
-		2. get its own *network_stats*, verses each other node, if it is lower, then request based on the difference
-		'''
-		
+			
 		total_available_apparent_energy = 0
 		
 		for n in range(len(node_connections)):
@@ -242,7 +273,7 @@ def client_task():
 					current_connection.request("PUT", "", params, headers)
 					r = current_connection.getresponse()
 					energy_received += float(r.read()) * (100 - node_distances[n]/500) / 100.0
-			
+		'''	
 		elif (energy_storage < storage_capacity): 
 			for n in range(len(node_connections)):						
 				apparent_energy = 0
@@ -256,7 +287,7 @@ def client_task():
 					current_connection.request("PUT", "", params, headers)
 					r = current_connection.getresponse()
 					energy_received += float(r.read()) * (100 - node_distances[n]/500) / 100.0
-		
+		'''		
 		if (energy_received > 0):
 			print node_id, energy_diff, energy_received		
 		

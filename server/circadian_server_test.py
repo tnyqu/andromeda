@@ -91,7 +91,7 @@ def set_info():
 
 def server_monitor():
 	loop = 0
-	while (loop < 48):
+	while (loop < 60):
 		time.sleep(1)
 		global total_energy_stored
 		if (len(total_energy_stored) != 0):
